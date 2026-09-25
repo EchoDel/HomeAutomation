@@ -1,0 +1,117 @@
+# ==============================================================================
+#  FAMILY CALENDAR BACKEND PACKAGE
+# ==============================================================================
+#  INSTRUCTIONS:
+#  1. Place this file in your /config/packages/ folder.
+#  2. Ensure your configuration.yaml has:
+#     homeassistant:
+#       packages: !include_dir_named packages
+#  3. RESTART Home Assistant.
+# ==============================================================================
+
+# 1. HELPERS (The Variables)
+# To add a new calendar: copy a filter entry below and its matching toggle
+# script, then update dashboard.yaml to reference it.
+# To remove a calendar: delete its filter entry and toggle script.
+input_text:
+  # Filter Toggles (RegEx: .* = Show, ^$ = Hide)
+  calendar1_calendar_filter:
+    name: calendar1 Filter
+    initial: "^$"
+  calendar2_calendar_filter:
+    name: calendar2 Filter
+    initial: "^$"
+  calendar3_calendar_filter:
+    name: calendar3 Filter
+    initial: "^$"
+  calendar4_calendar_filter:
+    name: calendar4 Filter
+    initial: "^$"
+  family_calendar_filter:
+    name: Family Filter
+    initial: ".*"
+  birthdays_calendar_filter:
+    name: Birthdays Filter
+    initial: "^$"
+  holidays_calendar_filter:
+    name: Holidays Filter
+    initial: "^$"
+
+input_select:
+  # The View selector (Week, Month, etc)
+  calendar_view:
+    name: Calendar View
+    options:
+      - Today
+      - Tomorrow
+      - Week
+      - Biweek
+      - Month
+    initial: Month
+
+# 2. SCRIPTS (The Logic)
+script:
+  # --- Filter Toggles ---
+  calendar1_calendar_visible_filter:
+    alias: Toggle calendar1 Calendar
+    sequence:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.calendar1_calendar_filter
+        data:
+          value: "{% if is_state('input_text.calendar1_calendar_filter', '.*') %}^${% else %}.*{% endif %}"
+
+  calendar2_calendar_visible_filter:
+    alias: Toggle calendar2 Calendar
+    sequence:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.calendar2_calendar_filter
+        data:
+          value: "{% if is_state('input_text.calendar2_calendar_filter', '.*') %}^${% else %}.*{% endif %}"
+
+  calendar3_calendar_visible_filter:
+    alias: Toggle calendar3 Calendar
+    sequence:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.calendar3_calendar_filter
+        data:
+          value: "{% if is_state('input_text.calendar3_calendar_filter', '.*') %}^${% else %}.*{% endif %}"
+
+  calendar4_calendar_visible_filter:
+    alias: Toggle calendar4 Calendar
+    sequence:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.calendar4_calendar_filter
+        data:
+          value: "{% if is_state('input_text.calendar4_calendar_filter', '.*') %}^${% else %}.*{% endif %}"
+
+  family_calendar_visible_filter:
+    alias: Toggle Family Calendar
+    sequence:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.family_calendar_filter
+        data:
+          value: "{% if is_state('input_text.family_calendar_filter', '.*') %}^${% else %}.*{% endif %}"
+
+  birthdays_calendar_visible_filter:
+    alias: Toggle Birthdays Calendar
+    sequence:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.birthdays_calendar_filter
+        data:
+          value: "{% if is_state('input_text.birthdays_calendar_filter', '.*') %}^${% else %}.*{% endif %}"
+
+  holidays_calendar_visible_filter:
+    alias: Toggle Holidays Calendar
+    sequence:
+      - action: input_text.set_value
+        target:
+          entity_id: input_text.holidays_calendar_filter
+        data:
+          value: "{% if is_state('input_text.holidays_calendar_filter', '.*') %}^${% else %}.*{% endif %}"
+
