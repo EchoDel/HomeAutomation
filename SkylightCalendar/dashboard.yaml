@@ -1,0 +1,525 @@
+wallpanel:
+  enabled: true
+  log_level_console: debug
+  fullscreen: false
+  idle_time: 10
+  display_time: 10
+  image_url: immich url
+  immich_api_keys:
+    - immich api key
+  immich_shared_albums: false
+  immich_persons:
+    - immich persons
+  immich_resolution: preview
+  cards:
+    - type: weather-forecast
+      entity: weather.forecast_home
+      show_forecast: true
+      forecast_type: daily
+views:
+  - type: sections
+    max_columns: 10
+    title: Family Calendar
+    path: family-calendar
+    theme: Skylight
+    sections:
+      - type: grid
+        cards:
+          - type: custom:better-moment-card
+            parentStyle: |
+              line-height:normal;
+            moment:
+              - parentStyle: |
+                  font-size:1em; text-align:center; margin-top:5px;
+                templateRaw: |
+                  {{moment format=cccc}}
+              - parentStyle: |
+                  font-size:1.5em; text-align:center; margin-top:5px;
+                templateRaw: |
+                  {{moment format=LLLL dd, yyyy}}
+              - parentStyle: |
+                  font-size:4em;  text-align:center; font-weight:400;
+                templateRaw: |
+                  {{moment format=HH:mm}}
+            grid_options:
+              columns: 20
+            card_mod:
+              style: |
+                ha-card {
+                  background: transparent !important;
+                  box-shadow: none !important;
+                  border: none !important;
+                }
+          - type: custom:weather-card
+            entity: weather.forecast_home
+            current: true
+            details: true
+            forecast: false
+            grid_options:
+              columns: 16
+              rows: 3
+          - type: weather-forecast
+            show_current: false
+            show_forecast: true
+            entity: weather.forecast_home
+            forecast_type: daily
+            name: Weather Forecast
+            grid_options:
+              columns: 20
+              rows: 3
+            card_mod:
+              style: |
+                ha-card {
+                  background: transparent !important;
+                  box-shadow: none !important;
+                  border: none !important;
+                }
+        column_span: 10
+      - type: grid
+        cards:
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: ' '
+                card_mod:
+                  style: >
+                    ha-card { background: none; box-shadow: none; border: none;
+                    }
+                grid_options:
+                  columns: 18
+                  rows: auto
+            grid_options:
+              columns: 120
+              rows: auto
+          - type: horizontal-stack
+            cards:
+              - type: custom:bubble-card
+                card_type: button
+                button_type: state
+                entity: person.charly
+                show_icon: true
+                show_name: true
+                tap_action:
+                  action: perform-action
+                  perform_action: script.calendar1_calendar_visible_filter
+                styles: |
+                  .bubble-button-background {
+                    opacity: 1 !important;
+                    background-color: ${hass.states['input_text.calendar1_calendar_filter'].state === '.*' ? 'light-grey' : 'var(--calendar1-default-primary-color)'} !important;
+                  }
+                sub_button:
+                  main: []
+                  bottom: []
+              - type: custom:bubble-card
+                card_type: button
+                button_type: state
+                entity: person.ed
+                show_icon: true
+                show_name: true
+                tap_action:
+                  action: perform-action
+                  perform_action: script.calendar2_calendar_visible_filter
+                styles: |
+                  .bubble-button-background {
+                    opacity: 1 !important;
+                    background-color: ${hass.states['input_text.calendar2_calendar_filter'].state === '.*' ? 'light-grey' : 'var(--calendar2-default-primary-color)'} !important;
+                  }
+              - type: custom:bubble-card
+                card_type: button
+                button_type: name
+                name: Birthdays
+                icon: mdi:cake-variant
+                show_icon: true
+                show_name: true
+                tap_action:
+                  action: perform-action
+                  perform_action: script.birthdays_calendar_visible_filter
+                styles: |
+                  .bubble-button-background {
+                    opacity: 1 !important;
+                    background-color: ${hass.states['input_text.birthdays_calendar_filter'].state === '.*' ? 'light-grey' : '#33a02c'} !important;
+                  }
+              - type: custom:bubble-card
+                card_type: button
+                button_type: name
+                name: Holidays
+                icon: mdi:bag-personal
+                show_icon: true
+                show_name: true
+                tap_action:
+                  action: perform-action
+                  perform_action: script.holidays_calendar_visible_filter
+                styles: |
+                  .bubble-button-background {
+                    opacity: 1 !important;
+                    background-color: ${hass.states['input_text.holidays_calendar_filter'].state === '.*' ? 'light-grey' : '#ff7f00'} !important;
+                  }
+            grid_options:
+              columns: 45
+              rows: auto
+          - type: custom:bubble-card
+            card_type: select
+            entity: input_select.calendar_view
+            show_name: true
+            show_state: true
+            name: Select View
+            show_last_changed: false
+            show_attribute: false
+        column_span: 10
+      - type: grid
+        cards:
+          - type: custom:config-template-card
+            entities:
+              - input_text.calendar1_calendar_filter
+              - input_text.calendar2_calendar_filter
+              - input_text.family_calendar_filter
+              - input_text.holidays_calendar_filter
+              - input_text.birthdays_calendar_filter
+              - input_select.calendar_view
+            variables:
+              CAL1CAL: states['input_text.calendar1_calendar_filter']?.state
+              CAL2CAL: states['input_text.calendar2_calendar_filter']?.state
+              FAMCAL: states['input_text.family_calendar_filter']?.state
+              HOLCAL: states['input_text.holidays_calendar_filter']?.state
+              BIRCAL: states['input_text.birthdays_calendar_filter']?.state
+              VIEW: states['input_select.calendar_view']?.state
+              STARTDAY: |
+                (() => {
+                  const calendarView = states['input_select.calendar_view']?.state;
+                  if (calendarView === 'Today') return 'today';
+                  if (calendarView === 'Tomorrow') return 'tomorrow';
+                  // Fallback
+                  return 'monday'; // <--- UPDATE THIS IF NEEDED, valid values are: monday, tuesday, wednesday, thursday, friday, saturday, sunday
+                })()
+              DAYS: |
+                (() => {
+                  const calendarView = states['input_select.calendar_view']?.state;
+                  if (calendarView === 'Today') return 1;
+                  if (calendarView === 'Tomorrow') return 2;
+                  if (calendarView === 'Week') return 7;
+                  if (calendarView === 'Biweek') return 14;
+                  // else return "month"
+                  return "month";
+                })()
+            card:
+              type: custom:week-planner-card
+              defaultCalendar: calendar.calendar
+              calendars:
+                - entity: calendar.calendar
+                  name: calendar1
+                  color: var(--calendar1-default-primary-color)
+                  filter: ${ CAL1CAL }
+                - entity: calendar.red_parry_yahoo_co_uk
+                  name: calendar2
+                  color: var(--calendar2-default-primary-color)
+                  filter: ${ CAL2CAL }
+                - entity: calendar.birthdays
+                  name: Birthdays
+                  color: var(--birthdays-default-primary-color)
+                  filter: ${ BIRCAL }
+                - entity: calendar.united_kingdom_eng
+                  name: Holidays
+                  color: var(--holidays-default-primary-color)
+                  filter: ${ HOLCAL }
+              days: ${ DAYS }
+              startingDay: ${ STARTDAY }
+              showNavigation: true
+              showWeekDayText: false
+              startingDayOffset: 0
+              hideWeekend: false
+              noCardBackground: false
+              compact: false
+              weather:
+                showCondition: true
+                showTemperature: true
+                showLowTemperature: true
+                useTwiceDaily: false
+                entity: weather.forecast_home
+              locale: en
+              showLocation: true
+              hidePastEvents: false
+              hideDaysWithoutEvents: false
+              hideTodayWithoutEvents: false
+              combineSimilarEvents: true
+              showLegend: false
+              legendToggle: false
+              card_mod:
+                style: >
+                  /* === BASE SAFETY === */
+
+                  :host {
+                    overflow: hidden;
+                  }
+
+
+                  /* === CARD BASE === */
+
+                  ha-card {
+                    background: rgba(255, 255, 255, 0.6) !important;
+                    border-radius: 24px !important;
+                    box-shadow: none !important;
+                    height: clamp(480px, 70vh, 900px) !important;
+                    max-height: clamp(480px, 70vh, 900px) !important;
+                  }
+
+
+                  /* === GRID LAYOUT === */
+
+                  .container {
+                    display: grid !important;
+                    grid-template-columns: repeat(7, minmax(0, 1fr)) !important;
+                    grid-auto-flow: row dense !important;
+                    gap: 0 !important;
+                  }
+
+
+                  .container .navigation,
+
+                  .container .header {
+                    grid-column: 1 / -1 !important;
+                  }
+
+
+                  /* WEEKDAY LABEL CELLS */
+
+                  .day.header {
+                    display: block !important;
+                    grid-column: auto !important;
+                    margin: 0 !important;
+                    padding: 0.2em !important;
+                    text-align: center !important;
+                    box-sizing: border-box !important;
+                  }
+
+
+                  .day.header .date .text {
+                    font-weight: 600 !important;
+                  }
+
+
+                  /* === DAY TILES === */
+
+                  .day {
+                    border: solid 1px whitesmoke !important;
+                    padding: 0.2% !important;
+                    width: auto !important;
+                    min-width: 0 !important;
+                    margin: 0 !important;
+                    box-sizing: border-box !important;
+                    align-self: stretch !important;
+                    justify-self: stretch !important;
+                  }
+
+
+                  /* === YOUR ORIGINAL VISUAL RULES === */
+
+                  .event.past {
+                    opacity: .2 !important;
+                    background-color: gray !important;
+                  }
+
+
+                  .time {
+                    color: #333333 !important;
+                    font-size: 0.8em !important;
+                  }
+
+
+                  .event {
+                    color: #333333 !important;
+                    line-height: 16px !important;
+                    background-color: var(--border-color) !important;
+                    border-radius: 10px !important;
+                    max-height: 80px !important;
+                    overflow: hidden !important;
+                    font-size: 1.1em !important;
+                  }
+
+
+                  .none {
+                    background-color: transparent !important;
+                  }
+
+
+                  .today .number {
+                    border-radius: 5px !important;
+                    background-color: orange !important;
+                    padding-left: 4px !important;
+                    padding-right: 4px !important;
+                  }
+
+
+                  .day .date .text {
+                    font-size: 1em !important;
+                    font-weight: bold !important;
+                  }
+
+
+                  .day .date .number {
+                    font-weight: bold !important;
+                    font-size: 3em !important;
+                  }
+
+
+                  /* Weekday colors */
+
+
+                  /* When showWeekDayText is true */
+
+                  .day[data-weekday="1"] .date .text,
+
+                  .day[data-weekday="2"] .date .text,
+
+                  .day[data-weekday="3"] .date .text,
+
+                  .day[data-weekday="4"] .date .text,
+
+                  .day[data-weekday="5"] .date .text {
+                    color: #2e7d32 !important;
+                  }
+
+
+                  .day[data-weekday="6"] .date .text,
+
+                  .day[data-weekday="7"] .date .text {
+                    color: #d32f2f !important;
+                  }
+
+                  /* When showWeekDayText is false */
+
+                  .container > .day.header .text {
+                    color: #2e7d32 !important;
+                  }
+
+                  /* Saturday = column 7 */
+
+                  .container > .day.header:nth-of-type(7) .text {
+                    color: #d32f2f !important;
+                  }
+
+                  /* Sunday = column 8 */
+
+                  .container > .day.header:nth-of-type(8) .text {
+                    color: #d32f2f !important;
+                  }
+
+
+
+                  /* === RESPONSIVE BREAKPOINTS === */
+
+                  @media (max-width: 1024px) {
+                    .day .date .number { font-size: 2em !important; }
+                    .day .date .text   { font-size: 0.95em !important; }
+                  }
+
+
+                  @media (max-width: 768px) {
+                    .day .date .number { font-size: 1.6em !important; }
+                    .day .date .text   { font-size: 0.85em !important; }
+                    .event { font-size: 0.85em !important; line-height: 1.1em !important; }
+                    .time  { font-size: 0.75em !important; }
+                  }
+
+
+                  /* =========================================================
+                  */
+
+                  /* === MOBILE OVERLAP FIX + TWO‑LINE WRAP FOR TITLES ========
+                  */
+
+                  /* =========================================================
+                  */
+
+                  @media (max-width: 480px) {
+
+                    :host {
+                      font-size: clamp(10px, 2.6vw, 13px) !important;
+                    }
+
+                    /* Condensed headers */
+                    .container .header,
+                    .container .navigation {
+                      padding: 0.25em 0.4em !important;
+                    }
+
+                    /* Day tiles tighter */
+                    .day {
+                      padding: 0.15em !important;
+                      min-width: 0 !important;
+                    }
+
+                    /* Smaller date numbers */
+                    .day .date .number {
+                      font-size: clamp(1.1em, 4.5vw, 1.4em) !important;
+                      line-height: 1.1 !important;
+                    }
+                    .day .date .text {
+                      font-size: clamp(0.72em, 3.2vw, 0.85em) !important;
+                      line-height: 1.1 !important;
+                    }
+
+                    /* Event chip reduced */
+                    .event {
+                      font-size: clamp(0.72em, 2.9vw, 0.85em) !important;
+                      line-height: 1.05em !important;
+                      padding: 0.25em 0.35em !important;
+                      max-height: 62px !important;
+                    }
+
+                    .time {
+                      font-size: clamp(0.65em, 2.5vw, 0.78em) !important;
+                    }
+
+                    /* === TWO-LINE WRAP FOR TITLES === */
+                    .event .title,
+                    .event .name,
+                    .event .summary,
+                    .event .location,
+                    .event .desc,
+                    .event .description {
+                      display: -webkit-box !important;
+                      -webkit-box-orient: vertical !important;
+                      -webkit-line-clamp: 2 !important;   /* <<< Two lines max */
+                      overflow: hidden !important;
+                      text-overflow: ellipsis !important;
+                      white-space: normal !important;
+                      line-height: 1.1em !important;
+                      max-height: calc(1.1em * 2) !important;
+                    }
+                  }
+
+
+                  /* Slightly larger phones / small tablets */
+
+                  @media (min-width: 481px) and (max-width: 768px) {
+
+                    :host {
+                      font-size: clamp(11px, 2.2vw, 14px) !important;
+                    }
+
+                    .event {
+                      max-height: 72px !important;
+                    }
+
+                    .event .title,
+                    .event .name,
+                    .event .summary {
+                      display: -webkit-box !important;
+                      -webkit-line-clamp: 2 !important;
+                      overflow: hidden !important;
+                    }
+                  }
+            grid_options:
+              columns: 120
+              rows: 1
+              showDescription: false
+        column_span: 10
+    cards: []
+    icon: mdi:calendar-blank-multiple
+    background:
+      opacity: 62
+      alignment: center
+      size: cover
+      repeat: repeat
+      attachment: fixed
+      image: /local/calbackgrd.png
