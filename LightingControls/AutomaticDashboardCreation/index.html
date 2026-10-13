@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lighting Dashboard Builder</title>
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">&#9783;</span>
+    <div>
+      <h1>Lighting Dashboard Builder</h1>
+      <p>Home Assistant &middot; floor plan lighting views</p>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <span id="storageBadge" class="badge badge-warn" title="Where drafts are being saved">checking storage&hellip;</span>
+    <button id="btnHA" class="btn ha-btn" type="button" title="Connect to Home Assistant to pick the entities your devices already have">Home Assistant<span id="haDot" class="ha-dot" aria-hidden="true"></span></button>
+    <button id="btnNew" class="btn" type="button">New</button>
+    <button id="btnDrafts" class="btn" type="button">Drafts</button>
+    <button id="btnImport" class="btn" type="button">Import</button>
+    <button id="btnExportDraft" class="btn" type="button">Export draft</button>
+    <input type="file" id="fileImport" accept="application/json,.json" hidden>
+    <button id="btnDownloadAll" class="btn btn-primary" type="button">Download files</button>
+  </div>
+</header>
+
+<main class="layout">
+
+  <!-- ================= LEFT: locations + global settings ================= -->
+  <aside class="panel panel-left">
+    <section class="pane">
+      <div class="pane-head">
+        <h2>Locations</h2>
+        <button id="btnAddLocation" class="btn btn-sm" type="button" title="Add a location">+ Location</button>
+      </div>
+      <ul id="locationList" class="location-list"></ul>
+      <p class="hint" id="locationHint">Each location becomes one view in the generated <code>dashboard.yaml</code>.</p>
+    </section>
+
+    <section class="pane">
+      <div class="pane-head"><h2>Dashboard</h2></div>
+      <div class="grid-2">
+        <label class="field">
+          <span>Dashboard title</span>
+          <input type="text" id="optTitle" data-bind="meta.title" placeholder="Lighting">
+        </label>
+        <label class="field">
+          <span>URL path</span>
+          <input type="text" id="optSlug" data-bind="meta.slug" placeholder="lighting">
+        </label>
+        <label class="field">
+          <span>Master icon</span>
+          <input type="text" id="optIcon" data-bind="meta.icon" placeholder="mdi:ceiling-light">
+        </label>
+        <label class="field">
+          <span>Theme name</span>
+          <input type="text" id="optTheme" data-bind="meta.theme" placeholder="Lighting">
+        </label>
+      </div>
+      <label class="check"><input type="checkbox" id="optMasterView" data-bind="options.masterView"> <span>Add &ldquo;All lights&rdquo; overview view</span></label>
+      <label class="check"><input type="checkbox" id="optWallPanel" data-bind="options.wallpanel"> <span>Add <code>wallpanel</code> config block</span></label>
+      <label class="check"><input type="checkbox" id="optShowNames" data-bind="options.showNames"> <span>Show labels under icons</span></label>
+      <label class="check"><input type="checkbox" id="optPerLightColour" data-bind="options.perLightColour"> <span>Per-light accent colour (from generated theme)</span></label>
+      <label class="check"><input type="checkbox" id="optOffDim" data-bind="options.offDim"> <span>Fade icons out when off</span></label>
+    </section>
+
+    <section class="pane">
+      <div class="pane-head">
+        <h2>Canvas</h2>
+      </div>
+      <div class="grid-2">
+        <label class="field">
+          <span>Snap to</span>
+          <select id="optSnap" data-bind="options.snap">
+            <option value="0">Off</option>
+            <option value="0.5">0.5%</option>
+            <option value="1">1%</option>
+            <option value="2.5">2.5%</option>
+            <option value="5">5%</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Default icon size</span>
+          <input type="number" id="optIconSize" data-bind="options.iconSize" min="16" max="200" step="2">
+        </label>
+      </div>
+      <div class="pane-head"><h3>Files to generate</h3></div>
+      <label class="check"><input type="checkbox" id="optGenPackage" data-bind="options.genPackage"> <span><code>lighting_package.yaml</code> (helpers, scripts, automations)</span></label>
+      <label class="check"><input type="checkbox" id="optGenTheme" data-bind="options.genTheme"> <span><code>lighting_theme.yaml</code></span></label>
+      <label class="check"><input type="checkbox" id="optGenSecrets" data-bind="options.genSecrets"> <span><code>lighting_secrets.yaml</code></span></label>
+      <label class="check"><input type="checkbox" id="optGenInstall" data-bind="options.genInstall"> <span><code>INSTALL.txt</code> step-by-step</span></label>
+    </section>
+  </aside>
+
+  <!-- ================= CENTRE: canvas editor ================= -->
+  <section class="panel panel-canvas">
+    <div class="canvas-head">
+      <div class="canvas-title">
+        <h2 id="canvasTitle">No location</h2>
+        <p id="canvasSubtitle" class="muted"></p>
+      </div>
+      <div class="canvas-tools">
+        <label class="btn btn-sm file-btn">
+          Upload base image
+          <input type="file" id="fileImage" accept="image/*" hidden>
+        </label>
+        <select id="existingImages" class="btn btn-sm" title="Use a base image already in the repo">
+          <option value="">Repo images&hellip;</option>
+        </select>
+        <label class="field inline">
+          <span>/local path</span>
+          <input type="text" id="imagePath" placeholder="/local/lighting/floor1.png">
+        </label>
+        <button id="btnAutoPlace" class="btn btn-sm" type="button" title="Move the selected icon to the middle of the plan, or spread every icon if none is selected">Centre</button>
+        <button id="btnDistribute" class="btn btn-sm" type="button" title="Spread all icons evenly over the plan">Spread</button>
+      </div>
+    </div>
+
+    <div class="icon-strip">
+      <div class="icon-strip-label">Icons on this view:</div>
+      <div id="iconChips" class="icon-chips"></div>
+      <div class="icon-count">
+        <span>Count</span>
+        <div class="stepper" role="group" aria-label="Icon count on this view">
+          <button id="btnIconMinus" class="step-btn" type="button" title="One icon fewer" aria-label="One icon fewer">&minus;</button>
+          <input id="iconCount" class="stepper-input" type="number" min="1" max="15" step="1" value="5"
+                 inputmode="numeric" aria-label="Number of icons on this view (1 to 15)">
+          <button id="btnIconPlus" class="step-btn" type="button" title="One icon more" aria-label="One icon more">+</button>
+        </div>
+        <button id="btnAddIcon" class="btn btn-sm" type="button">+ Icon</button>
+      </div>
+    </div>
+
+    <div class="canvas-wrap">
+      <div id="canvas" class="canvas" tabindex="0" aria-label="Base image canvas. Click an icon to select, drag to move.">
+        <div id="canvasEmpty" class="canvas-empty">
+          <p><strong id="canvasEmptyTitle">No base image yet</strong></p>
+          <p id="canvasEmptyText">Upload a floor plan, pick one of the repo images, or set an existing <code>/local/...</code> path.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="canvas-foot">
+      <span class="muted">Drag icons to place. Arrow keys nudge (hold Shift for bigger steps), Delete removes the selected icon.</span>
+      <span id="canvasStatus" class="muted"></span>
+    </div>
+  </section>
+
+  <!-- ================= RIGHT: inspector + YAML ================= -->
+  <aside class="panel panel-right" id="panelRight">
+    <section class="pane pane-inspector">
+      <div class="pane-head">
+        <h2 id="inspectorTitle">Inspector</h2>
+        <div class="seg small" id="inspectorSeg" role="group" aria-label="Inspector mode">
+          <button type="button" data-mode="location">Location</button>
+          <button type="button" data-mode="tuya">Tuya Smart Plus</button>
+        </div>
+      </div>
+      <div id="inspectorBody" class="inspector-body"></div>
+    </section>
+
+    <div class="pane-splitter" id="inspectorSplitter" role="separator" aria-orientation="horizontal"
+         tabindex="0" title="Drag to give the inspector more or less room. Double-click to reset."
+         aria-label="Resize the inspector"></div>
+
+    <section class="pane pane-output">
+      <div class="pane-head">
+        <h2>Generated YAML</h2>
+        <div class="output-tools">
+          <select id="filePicker" class="btn btn-sm"></select>
+          <button id="btnCopy" class="btn btn-sm" type="button">Copy</button>
+          <button id="btnDownload" class="btn btn-sm btn-primary" type="button">Download</button>
+        </div>
+      </div>
+      <div id="issueBox" class="issues"></div>
+      <pre id="yamlOutput" class="yaml-output" tabindex="0"></pre>
+    </section>
+  </aside>
+</main>
+
+<!-- ================= Drafts dialog ================= -->
+<dialog id="draftsDialog" class="dialog">
+  <form method="dialog" class="dialog-head">
+    <h2>Drafts</h2>
+    <button class="btn btn-sm" value="close" type="submit">Close</button>
+  </form>
+  <div class="dialog-body">
+    <p class="muted small" id="draftStoreNote"></p>
+    <div class="draft-save">
+      <input type="text" id="draftName" placeholder="draft name (e.g. ground-floor-v2)">
+      <button id="btnSaveDraft" class="btn btn-primary btn-sm" type="button">Save as new</button>
+      <button id="btnOverwriteDraft" class="btn btn-sm" type="button">Overwrite selected</button>
+    </div>
+    <ul id="draftList" class="draft-list"></ul>
+  </div>
+</dialog>
+
+<!-- ================= Home Assistant connection ================= -->
+<dialog id="haDialog" class="dialog">
+  <form method="dialog" class="dialog-head">
+    <h2>Home Assistant</h2>
+    <button class="btn btn-sm" value="close" type="submit">Close</button>
+  </form>
+  <div class="dialog-body">
+    <p class="muted small">Connect and the builder reads the entities your devices already have &mdash;
+      Tuya / Smart Life plugs, Matter and Thread lights, anything with an <code>entity_id</code> &mdash;
+      so a fixture can pick one instead of being typed in blind.</p>
+    <label class="field">
+      <span>Home Assistant URL</span>
+      <input type="text" id="haUrl" placeholder="http://127.0.0.1:8123" spellcheck="false">
+    </label>
+    <label class="field">
+      <span>Long lived access token</span>
+      <input type="password" id="haToken" placeholder="Profile &rarr; Security &rarr; Long-lived tokens" autocomplete="off">
+    </label>
+    <p id="haStatus" class="hint">Not connected.</p>
+    <div class="draft-save">
+      <button id="btnHASave" class="btn btn-primary btn-sm" type="button">Save &amp; connect</button>
+      <button id="btnHAFetch" class="btn btn-sm" type="button">Read entities</button>
+      <button id="btnHAClear" class="btn btn-sm" type="button">Forget</button>
+    </div>
+    <p class="muted small">The token is kept only in <code>temp/ha-config.json</code> on this machine,
+      which is git-ignored. It is never returned to this page, never written into a draft and never
+      written into the generated YAML. Leave the token blank to keep the one already saved.</p>
+  </div>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="js/util.js"></script>
+<script src="js/icons.js"></script>
+<script src="js/state.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/canvas.js"></script>
+<script src="js/ha.js"></script>
+<script src="js/inspector.js"></script>
+<script src="js/yaml.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
