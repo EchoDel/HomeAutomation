@@ -88,8 +88,15 @@
     function row(entity) {
       var item = el('button', 'entity-row');
       item.type = 'button';
-      item.appendChild(el('code', null, entity.id));
-      item.appendChild(el('span', 'entity-name', entity.name || ''));
+      /* The id and name are ellipsised to fit one line, so spell them out in a
+         hover tooltip (title also covers hovering the state badge at the end). */
+      item.title = entity.id + (entity.name ? ' - ' + entity.name : '');
+      var idEl = el('code', null, entity.id);
+      idEl.title = entity.id;
+      item.appendChild(idEl);
+      var nameEl = el('span', 'entity-name', entity.name || '');
+      if (entity.name) nameEl.title = entity.name;
+      item.appendChild(nameEl);
       var state = el('span', 'entity-state', LightingHA.stateWord(entity));
       if (entity.state === 'on') state.classList.add('is-on');
       if (entity.state === 'unavailable') state.classList.add('is-bad');
@@ -435,7 +442,7 @@
       field('View title', textInput(loc.title, function (v) { loc.title = v; soft(function () { ctx.onEdit('ltitle'); }); }, '(blank = name)'))
     ]));
     sec.appendChild(field('Base image /local path',
-      textInput(loc.imagePath, function (v) { loc.imagePath = v.trim(); soft(function () { ctx.onEdit('imgpath'); }); },
+      textInput(loc.imagePath, function (v) { loc.imagePath = v.trim(); loc.imageRatio = 0; soft(function () { ctx.onEdit('imgpath'); }); },
         '/local/lighting/' + U.slugify(loc.name) + '.png')));
     var note = el('p', 'hint');
     note.innerHTML = 'Base images live in Home Assistant at <code>/config/www/lighting/</code>. ' +

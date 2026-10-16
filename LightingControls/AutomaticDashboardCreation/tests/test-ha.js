@@ -101,6 +101,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     'only light/switch/number fixtures are offered: ' + suggested.join(', '));
   say(!suggested.some(id => /^(person|binary_sensor)\./.test(id)),
     'motion and person entities are not offered for a fixture');
+  const titleRow = iconPicker.querySelector('.entity-row');
+  say(!!titleRow && titleRow.title.indexOf(titleRow.querySelector('code').textContent) === 0,
+    'each row spells out the full id (and name) on hover: ' + (titleRow && titleRow.title));
 
   input.value = 'plug';
   input.dispatchEvent(new win.Event('input', { bubbles: true }));

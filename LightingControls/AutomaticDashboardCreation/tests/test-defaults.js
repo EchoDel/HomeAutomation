@@ -39,6 +39,14 @@ say(S.migrate(JSON.parse(JSON.stringify(old))).tuya.mode === 'local',
 say(S.migrate({ locations: [{ name: 'Old', icons: [] }] }).tuya.mode === 'none',
   'a draft with no tuya section gets the new default');
 
+console.log('\n== a measured image ratio survives a reload ==');
+const measured = S.defaultState();
+measured.locations[0].imageRatio = 1.7778;
+say(S.migrate(JSON.parse(JSON.stringify(measured))).locations[0].imageRatio === 1.7778,
+  'the ratio the builder measured is kept when the draft is reopened');
+say(S.defaultState().locations[0].imageRatio === 0,
+  'and a draft that has never measured an image defaults to 0 (no fit block)');
+
 console.log('\n== opting in still works ==');
 const opted = S.defaultState();
 opted.tuya.mode = 'local';

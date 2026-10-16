@@ -294,13 +294,33 @@
         });
       }
     });
+
+    /* A panel view hands this single card the whole screen, so a wide floor
+       plan grows taller than the viewport and the icons below the fold need a
+       scroll. Letterbox it instead: give #root the image's own aspect ratio and
+       cap its width by the height still available under the HA header. With the
+       ratio matched, `object-fit: cover` on the image is exact, so the icons -
+       which Home Assistant positions against #root - stay aligned. */
+    var ratio = U.round(item.loc.imageRatio || 0, 4);
+    if (ratio > 0) {
+      var avail = '(100vh - var(--header-height, 56px) - var(--safe-area-inset-top, 0px) - var(--safe-area-inset-bottom, 0px))';
+      var availD = '(100dvh - var(--header-height, 56px) - var(--safe-area-inset-top, 0px) - var(--safe-area-inset-bottom, 0px))';
+      l.add(ind + 2, 'card_mod:');
+      l.add(ind + 4, 'style: |-');
+      l.add(ind + 6, '#root {');
+      l.add(ind + 8, 'aspect-ratio: ' + ratio + ';');
+      l.add(ind + 8, 'max-width: calc(' + avail + ' * ' + ratio + ');');
+      l.add(ind + 8, 'max-width: calc(' + availD + ' * ' + ratio + ');');
+      l.add(ind + 8, 'margin: 0 auto;');
+      l.add(ind + 6, '}');
+    }
     return l;
   }
 
   function buildDashboard(state, p) {
     var opts = state.options;
     var l = headerBlock('LIGHTING DASHBOARD',
-      ['One view per location: floor plan background with the placed light icons.',
+      ['One view per location: the floor plan image with the placed light icons.',
        'Tap an icon to toggle that fixture, hold it for more info.']);
 
     if (opts.masterView) {
@@ -358,28 +378,16 @@
       l.add(4, 'path: ' + q(item.viewPath));
       l.add(4, 'icon: ' + q(loc.viewIcon || 'mdi:floor-plan'));
       if (opts.genTheme) l.add(4, 'theme: ' + q(p.theme));
-      l.add(4, 'type: sections');
-      l.add(4, 'max_columns: 1');
-      if (loc.imagePath) {
-        l.add(4, 'background:');
-        l.add(6, 'image: ' + q(loc.imagePath));
-        if (opts.background && opts.background.opacity != null) {
-          l.add(6, 'opacity: ' + Math.round(opts.background.opacity));
-        }
-        if (opts.background && opts.background.alignment) l.add(6, 'alignment: ' + q(opts.background.alignment));
-        if (opts.background && opts.background.size) l.add(6, 'size: ' + q(opts.background.size));
-        if (opts.background && opts.background.attachment) l.add(6, 'attachment: ' + q(opts.background.attachment));
-      }
+      /* A panel view gives its single card the whole screen, which is what a
+         floor plan wants. A `sections` view would cap the column at 500px
+         unless the theme overrides --ha-view-sections-column-max-width. */
+      l.add(4, 'panel: true');
       if (!item.icons.length) {
         l.comment(4, '# no icons placed on this view yet - add some in the builder');
         return;
       }
-      /* Cards must live under a `sections:` grid, or a sections view ignores
-         them at runtime (see the comment in the master view above). */
-      l.add(4, 'sections:');
-      l.add(6, '- type: grid');
-      l.add(8, 'cards:');
-      pictureElementsCard(state, item, 10).out.forEach(function (line) { l.out.push(line); });
+      l.add(4, 'cards:');
+      pictureElementsCard(state, item, 6).out.forEach(function (line) { l.out.push(line); });
     });
 
     return reorderViews(l);

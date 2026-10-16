@@ -42,6 +42,12 @@ opted.locations[0].icons[0].tuya.deviceId = 'bfabc';
 opted.locations[0].icons[0].tuya.localKey = 'k1';
 cases.push({ name: 'tuya-local-opt-in', state: opted });
 
+/* A measured floor plan emits the card-level card_mod that letterboxes #root;
+   this case gets it into yaml-out so check-yaml.py parses the block scalar. */
+const sized = State.defaultState();
+sized.locations[0].imageRatio = 1.7778;
+cases.push({ name: 'measured-floor-plan', state: sized });
+
 const iconsSrc = fs.readFileSync(path.join(APP, 'js/icons.js'), 'utf8');
 const vendored = Array.from(iconsSrc.matchAll(/'([a-z-]+)':\s*'M/g)).map(m => m[1]);
 
@@ -135,11 +141,11 @@ say(/attribute: friendly_name/.test(elDash), 'a name label asks for friendly_nam
 /* Home Assistant does Object.keys(config.style) and setProperty() each entry,
    so `style` must be a YAML mapping. A block scalar (style: |-) makes every
    setProperty a no-op and the element lands top-left, clipped by the card. */
-say(/\n {16}style:\n {18}left: '[0-9.]+%'\n {18}top: '[0-9.]+%'/.test(elDash),
+say(/\n {12}style:\n {14}left: '[0-9.]+%'\n {14}top: '[0-9.]+%'/.test(elDash),
   'state-icon style is a mapping with left/top, not a block scalar');
-say(/\n {16}style:\n {18}left: '50%'\n {18}top: '50%'\n {18}width: '100%'/.test(elDash),
+say(/\n {12}style:\n {14}left: '50%'\n {14}top: '50%'\n {14}width: '100%'/.test(elDash),
   'the image element style is a mapping too, and anchored to the centre');
-say(!/\n {16}style: \|-/.test(elDash),
+say(!/\n {12}style: \|-/.test(elDash),
   'no element style is emitted as a block scalar string');
 /* A hardcoded white icon vanishes on a light floor plan, so the icon must
    let state_color pick the hue. (The text label keeps white + a text-shadow.) */
@@ -157,22 +163,38 @@ say(!/--state-icon-color/.test(elDash),
 say(/--card-mod-icon-dim: none/.test(elDash),
   'card-mod is told not to dim the icon a second time');
 
-console.log('\n== the sections views are layout-valid ==');
-/* A `type: sections` view only renders cards under a `sections:` grid. A
-   top-level `cards:` key is ignored at runtime - the frontend shows it purely
-   as an editor-only "imported cards" list with an eye-off icon. */
+console.log('\n== the views use a layout Home Assistant will render ==');
+/* Floor views are panel views so the single picture-elements card fills the
+   screen; the All Lights overview stays a sections view. A `type: sections`
+   view only renders cards under a `sections:` grid - a top-level `cards:` key
+   there is ignored at runtime (editor-only "imported cards" list). */
 const layoutDash = dash(gen(State.defaultState()));
-say(/^ {4}type: sections$/m.test(layoutDash), 'the views are sections views');
-say(/^ {4}sections:$/m.test(layoutDash), 'and cards are grouped under sections');
-say(/^ {6}- type: grid$/m.test(layoutDash), 'inside a grid section');
-say(!/^ {4}cards:/m.test(layoutDash),
-  'never a top-level cards key, which HA ignores at runtime');
-say(/^ {10}- type: picture-elements$/m.test(layoutDash),
-  'the floor plan card sits inside the grid');
+say(/^ {4}panel: true$/m.test(layoutDash), 'the floor views are panel views');
+say(/^ {6}- type: picture-elements$/m.test(layoutDash),
+  'the floor plan card is a direct child of the panel view, so it fills it');
+say(/^ {4}type: sections$/m.test(layoutDash), 'the All Lights overview is a sections view');
+say(/^ {6}- type: grid$/m.test(layoutDash), 'with its cards in a grid section');
 say(/^ {10}- type: horizontal-stack$/m.test(layoutDash),
-  'the All On / All Off stack is inside the grid too');
+  'the All On / All Off stack is inside that grid');
+say(!/^ {4}background:$/m.test(layoutDash),
+  'no view-level background block (the floor plan is the card image)');
 say(/--ha-view-sections-column-max-width: "1600px"/.test(gen(State.defaultState())['lighting_theme.yaml']),
-  'the theme stretches a single sections column past the 500px default');
+  'the theme stretches a sections column past the 500px default');
+say(!/#root \{/.test(layoutDash),
+  'a floor plan with no measured ratio emits no fit block (nothing to size it by)');
+
+/* A panel view hands the single card the whole screen, so a wide floor plan
+   grows past the bottom of the viewport. Once the image ratio is known, #root
+   is letterboxed to the ratio and its width capped by the height under the
+   header, so the plan always fits the screen. */
+const fitState = State.defaultState();
+fitState.locations[0].imageRatio = 1.7778;
+const fitDash = dash(gen(fitState));
+say(/\n {8}card_mod:\n {10}style: \|-\n {12}#root \{/.test(fitDash),
+  'a floor plan with a measured ratio letterboxes #root');
+say(/aspect-ratio: 1\.7778/.test(fitDash), 'using the image aspect ratio');
+say(/max-width: calc\(\(100dvh - var\(--header-height, 56px\)/.test(fitDash),
+  'and caps its width by the height left under the Home Assistant header');
 
 console.log('\n== the install notes cover card-mod ==');
 const install = gen(State.defaultState())['INSTALL.txt'];

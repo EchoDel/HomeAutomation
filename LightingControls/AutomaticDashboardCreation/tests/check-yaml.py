@@ -90,6 +90,17 @@ def walk(node, where):
     if not isinstance(node, dict):
         return
     if node.get("type") == "picture-elements":
+        card_mod = node.get("card_mod")
+        if card_mod is not None:
+            # The card-level block (the fit/letterbox CSS) is a real card-mod
+            # style, so it must be a plain string - card-mod injects it into
+            # this card's shadow root, where #root lives.
+            mod_style = card_mod.get("style") if isinstance(card_mod, dict) else None
+            if not isinstance(mod_style, str):
+                problems.append(
+                    f"{where}: card-level card_mod.style must be a string, "
+                    f"got {type(mod_style).__name__}"
+                )
         elements_list = node.get("elements")
         if not isinstance(elements_list, list):
             problems.append(f"{where}: picture-elements without an elements list")
@@ -107,6 +118,33 @@ for path, docs in documents:
     for index, doc in enumerate(docs):
         if isinstance(doc, dict) and "views" in doc:
             walk(doc["views"], path.name)
+
+# --- view layout --------------------------------------------------------------
+# A `type: sections` view renders cards only under a `sections:` grid; a
+# top-level `cards:` key there is ignored at runtime (it is the editor's
+# "imported cards" list). A panel view takes cards directly and makes its one
+# card fill the screen - that is what the floor plan views use.
+for path, docs in documents:
+    for doc in docs:
+        if not isinstance(doc, dict) or "views" not in doc:
+            continue
+        for index, view in enumerate(doc["views"] or []):
+            if not isinstance(view, dict):
+                continue
+            where = f"{path.name}.views[{index}]"
+            if view.get("type") == "sections":
+                if "cards" in view:
+                    problems.append(
+                        f"{where}: sections view has a top-level cards key - "
+                        "Home Assistant ignores it at runtime, put them under sections:"
+                    )
+                if "sections" not in view:
+                    problems.append(f"{where}: sections view without a sections list")
+            elif view.get("panel") is True or view.get("type") == "panel":
+                if "sections" in view:
+                    problems.append(f"{where}: panel view must list cards directly, not sections:")
+                if "cards" not in view:
+                    problems.append(f"{where}: panel view without a cards list")
 
 if problems:
     for problem in problems:

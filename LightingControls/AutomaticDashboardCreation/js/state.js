@@ -78,8 +78,7 @@
       genPackage: true,
       genTheme: true,
       genSecrets: true,
-      genInstall: true,
-      background: { opacity: 100, alignment: 'center', size: 'contain', attachment: 'scroll' }
+      genInstall: true
     },
     tuya: {
       /* Fixtures that already exist in Home Assistant need nothing but their
@@ -171,6 +170,7 @@
       imagePath: opts.imagePath || '',
       imageDataUrl: opts.imageDataUrl || '',
       imageFile: opts.imageFile || '',
+      imageRatio: opts.imageRatio || 0,
       iconCount: clampIconCount(opts.iconCount === undefined ? 5 : opts.iconCount),
       title: opts.title || '',
       icons: [],
@@ -394,7 +394,6 @@
       activeIcon: raw.activeIcon || null,
       locations: []
     };
-    state.options.background = Object.assign({}, base.options.background, (raw.options || {}).background || {});
     state.tuya.autos = Object.assign({}, base.tuya.autos, (raw.tuya || {}).autos || {});
 
     var locations = Array.isArray(raw.locations) ? raw.locations : [];
@@ -409,6 +408,7 @@
         imagePath: loc.imagePath,
         imageDataUrl: loc.imageDataUrl,
         imageFile: loc.imageFile,
+        imageRatio: loc.imageRatio,
         iconCount: loc.iconCount,
         title: loc.title
       });

@@ -60,10 +60,23 @@ Changes autosave. Drafts are listed under **Drafts** in the toolbar.
 | `lighting_secrets.yaml` | merge into `/config/secrets.yaml` - **never commit this** |
 | `INSTALL.txt` | not for Home Assistant, it is the step-by-step install guide |
 
-The dashboard is stock Lovelace: a `sections` view per location containing a
-`picture-elements` card with the floor plan as an image and one `state-icon` per light
-(tap toggles, hold opens the detail dialog). Icon positions are percentages, so the same
-view works on a phone and on a wall panel.
+The dashboard is stock Lovelace: a **panel view** per location, which gives its one
+`picture-elements` card the whole screen - the floor plan as an image with one
+`state-icon` per light (tap toggles, hold opens the detail dialog). Icon positions are
+percentages, so the same view works on a phone and on a wall panel. The "All Lights"
+overview is a `sections` view of buttons and entity lists.
+
+Because a panel view hands the card the full width, a wide floor plan would otherwise
+grow taller than the browser and need a scroll. The builder measures each floor plan's
+own aspect ratio - every location, at start up and again on export, straight from the
+image - stores it on the location, and emits a small `card_mod` block that letterboxes
+the plan: `#root` gets `aspect-ratio` matching that image and a `max-width` capped by the
+height still available under the Home Assistant header, so the plan always fits the
+screen - as wide as the screen allows, or as tall as it allows - and never scrolls. The
+icons stay aligned because Home Assistant positions them against `#root`, which is now
+the same shape as the image. Each floor keeps its own ratio (a 738x928 plan and a
+535x844 plan letterbox differently). This block needs card-mod (see [Installing](#installing));
+without it the plan still renders, it just may scroll on a very wide screen.
 
 The package adds an `input_boolean` enable helper per fixture (turn one off and the
 all-on / all-off scripts skip it), a group per location
@@ -148,8 +161,11 @@ it for more info. You only lose the buttons and the automations.
 
 ### If the plan loads but the icons do not
 
-The background image comes from the view, the icons come from the
-`picture-elements` card, so the two can fail separately. Check, in order:
+The floor plan and the icons both come from the `picture-elements` card, so they
+succeed or fail together. Each floor is a `panel: true` view, which makes its one
+card fill the screen. (If you ever put cards on a `sections` view instead, they
+must sit inside a `sections:` grid - a top-level `cards:` key there is silently
+ignored at runtime.) Check, in order:
 
 1. **Do the entities exist?** *Developer Tools &rarr; States*, search one of the ids
    from `dashboard.yaml`. `light.floor_1_uplighter` and friends are the builder's
@@ -262,8 +278,8 @@ showing a blank box.
 ```
 cd tests
 npm install
-npm test               # 192 checks, plus 14 server tests and every generated yaml parsed
-npm run test:browser   # 33 checks in real Firefox, needs the server running
+npm test               # 199 checks, plus 14 server tests and every generated yaml parsed
+npm run test:browser   # 36 checks in real Firefox, needs the server running
 npm run test:e2e       # 8 checks, real Firefox -> server -> fake Home Assistant
 ```
 
@@ -278,7 +294,7 @@ as a top-level `cards:` key that Home Assistant ignores at runtime. The YAML it 
 `tests/yaml-out/`, which `check-yaml.py` then parses with PyYAML
 (`pip install pyyaml`) so the output is checked by a real parser, not just by
 string matching. It also replays Home Assistant's own `createStyledHuiElement`
-code over every generated element (321 of them) to prove the `style` blocks are
+code over every generated element (341 of them) to prove the `style` blocks are
 mappings that actually reach the DOM. `test_server.py` starts a stand-in Home
 Assistant on a local port and runs the server's `/api/ha/*` routes against it: the
 token never leaks into a response, the config file is mode 0600, and `temp/`

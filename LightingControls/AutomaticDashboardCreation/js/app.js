@@ -240,21 +240,69 @@
     loc.imageUrl = url;
   }
 
-  /* Match the canvas box to the base image aspect ratio. */
+  /* Read an image's natural size, so we can letterbox a floor plan to its own
+     aspect ratio. Resolves to zeros when the image does not load. */
+  function probeImage(url) {
+    return new Promise(function (resolve) {
+      if (!url) { resolve({ width: 0, height: 0, ratio: 0 }); return; }
+      var probe = new Image();
+      probe.onload = function () {
+        var w = probe.naturalWidth, h = probe.naturalHeight;
+        resolve({ width: w, height: h, ratio: (w > 0 && h > 0) ? U.round(w / h, 4) : 0 });
+      };
+      probe.onerror = function () { resolve({ width: 0, height: 0, ratio: 0 }); };
+      probe.src = url;
+    });
+  }
+
+  /* Every location with an image needs its own ratio, not just the one on
+     screen, so measure them all. Each image is resolved the same way the canvas
+     previews it: an uploaded data url, or a file server.py can find for a
+     /local path. Runs at most once at a time; any change marks the draft dirty
+     so the next export carries the ratio. */
+  var measuring = null;
+  function measureImages() {
+    if (measuring) return measuring;
+    if (!state) return Promise.resolve(false);
+    var pending = state.locations.filter(function (loc) {
+      return !(loc.imageRatio > 0) && (loc.imageDataUrl || loc.imageFile || loc.imagePath);
+    });
+    if (!pending.length) return Promise.resolve(false);
+    measuring = Promise.all(pending.map(function (loc) {
+      var wanted = loc.imageDataUrl ? Promise.resolve(loc.imageDataUrl) : LightingStore.imageUrl(loc);
+      return wanted.then(function (url) {
+        return probeImage(url).then(function (info) {
+          if (url && url.indexOf('blob:') === 0) {
+            try { URL.revokeObjectURL(url); } catch (err) { /* ignore */ }
+          }
+          if (info.ratio > 0) loc.imageRatio = info.ratio;
+          return info.ratio > 0;
+        });
+      }).catch(function () { return false; });
+    })).then(function (results) {
+      measuring = null;
+      var changed = results.some(Boolean);
+      if (changed) markDirty();
+      return changed;
+    });
+    return measuring;
+  }
+
+  /* Match the canvas box to the base image aspect ratio, and remember the ratio
+     on the location so the dashboard can letterbox the plan to the screen. */
   function fitCanvas(loc) {
     loc = loc || LightingState.activeLocation(state);
     if (!loc || !loc.imageUrl) {
       LightingCanvas.applyAspect(null);
       return;
     }
-    var probe = new Image();
-    probe.onload = function () {
+    probeImage(loc.imageUrl).then(function (info) {
       var latest = LightingState.activeLocation(state);
       if (!latest || latest.id !== loc.id) return;
-      LightingCanvas.applyAspect(latest, probe.naturalWidth, probe.naturalHeight);
-    };
-    probe.onerror = function () { /* keep the current box */ };
-    probe.src = loc.imageUrl;
+      if (info.ratio > 0) latest.imageRatio = info.ratio;
+      LightingCanvas.applyAspect(latest, info.width, info.height);
+      if (info.ratio > 0) markDirty();
+    });
   }
 
   function renderInspector() {
@@ -451,10 +499,12 @@
     loc.imageDataUrl = result.dataUrl || '';
     loc.imageFile = result.file || '';
     loc.imageUrl = loc.imageDataUrl || '';
+    loc.imageRatio = 0;
     if (result.path) loc.imagePath = result.path;
     else if (!loc.imagePath) loc.imagePath = '/local/lighting/' + U.slugify(loc.name) + '.png';
     if (previous && previous !== result.file) LightingStore.forgetImage(previous);
     render();
+    measureImages();
     markDirty();
     toast(result.uploaded
       ? 'Image stored in temp/images - copy it to /config/www' + (result.path || '').replace('/local', '') + ' for Home Assistant'
@@ -732,17 +782,26 @@
 
   /* ----------------------------------------------------------------- export */
 
+  /* Exports read the generated files, so make sure every image has been
+     measured first - a downloaded dashboard should carry its aspect ratios
+     even if a location was never opened. */
+  function withMeasuredImages(action) {
+    return measureImages().then(function () { action(); });
+  }
+
   function downloadAll() {
-    if (!output.files.length) {
-      toast('Nothing to download', 'error');
-      return;
-    }
-    output.files.forEach(function (file, index) {
-      setTimeout(function () {
-        U.download(file.name, file.content, /\.ya?ml$/.test(file.name) ? 'text/yaml;charset=utf-8' : 'text/plain;charset=utf-8');
-      }, index * 250);
+    withMeasuredImages(function () {
+      if (!output.files.length) {
+        toast('Nothing to download', 'error');
+        return;
+      }
+      output.files.forEach(function (file, index) {
+        setTimeout(function () {
+          U.download(file.name, file.content, /\.ya?ml$/.test(file.name) ? 'text/yaml;charset=utf-8' : 'text/plain;charset=utf-8');
+        }, index * 250);
+      });
+      toast('Downloading ' + output.files.length + ' files', 'ok');
     });
-    toast('Downloading ' + output.files.length + ' files', 'ok');
   }
 
   /* ------------------------------------------------------------------ binds */
@@ -792,6 +851,7 @@
       var loc = LightingState.activeLocation(state);
       if (!loc) return;
       loc.imagePath = el.imagePath.value.trim();
+      loc.imageRatio = 0;
       markDirty();
       renderCanvasSoon();
     });
@@ -840,6 +900,8 @@
           renderChips();
           LightingCanvas.render(LightingState.activeLocation(state), state.activeIcon, state.options.snap);
         }
+        /* A new base image path needs its ratio measured again. */
+        if (reason === 'imgpath') measureImages();
         markDirty();
       },
       onModeChange: function () { renderInspector(); }
@@ -953,16 +1015,20 @@
     });
     document.getElementById('btnDownloadAll').addEventListener('click', downloadAll);
     document.getElementById('btnDownload').addEventListener('click', function () {
-      var file = output.files.filter(function (f) { return f.name === activeFile; })[0];
-      if (!file) return;
-      U.download(file.name, file.content, /\.ya?ml$/.test(file.name) ? 'text/yaml;charset=utf-8' : 'text/plain;charset=utf-8');
+      withMeasuredImages(function () {
+        var file = output.files.filter(function (f) { return f.name === activeFile; })[0];
+        if (!file) return;
+        U.download(file.name, file.content, /\.ya?ml$/.test(file.name) ? 'text/yaml;charset=utf-8' : 'text/plain;charset=utf-8');
+      });
     });
     document.getElementById('btnCopy').addEventListener('click', function () {
-      var file = output.files.filter(function (f) { return f.name === activeFile; })[0];
-      if (!file) return;
-      U.copyText(file.content)
-        .then(function () { toast('Copied ' + file.name, 'ok'); })
-        .catch(function () { toast('Copy failed - select the text instead', 'error'); });
+      withMeasuredImages(function () {
+        var file = output.files.filter(function (f) { return f.name === activeFile; })[0];
+        if (!file) return;
+        U.copyText(file.content)
+          .then(function () { toast('Copied ' + file.name, 'ok'); })
+          .catch(function () { toast('Copy failed - select the text instead', 'error'); });
+      });
     });
     el.filePicker.addEventListener('change', function () {
       activeFile = el.filePicker.value;
@@ -1067,6 +1133,8 @@
         updateHaBadge();
         if (state) renderInspector();
       });
+      /* Measure every floor plan so the export can letterbox each one. */
+      measureImages();
     }).catch(function (err) {
       console.error(err);
       state = LightingState.defaultState();

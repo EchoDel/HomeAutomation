@@ -59,6 +59,22 @@ const URL = process.env.APP_URL || 'http://127.0.0.1:8765/';
     say(g.svg.fill.every(f => /rgb/.test(f)), 'icons are painted, not invisible: ' + g.svg.fill[0]);
     say(g.overflow === 0, 'nothing hangs off the plan');
 
+    console.log('\n== every floor plan is measured for the letterbox ==');
+    /* The export letterboxes each panel view to its own image, so the builder
+       measures every location up front - not only the one on screen. Both
+       default floors point at real images on the server. */
+    const dash = await read(`
+      var sel = document.getElementById('filePicker');
+      sel.value = 'dashboard.yaml';
+      sel.dispatchEvent(new Event('change', { bubbles: true }));
+      return document.getElementById('yamlOutput').textContent;
+    `);
+    const ratios = Array.from(dash.matchAll(/aspect-ratio: ([0-9.]+)/g)).map(m => m[1]);
+    say(ratios.length === 2, 'both floor plans carry their own aspect ratio, got ' + JSON.stringify(ratios));
+    say(ratios.every(r => Number(r) > 0), 'and each is a positive ratio from the image: ' + ratios.join(', '));
+    say(new Set(ratios).size === ratios.length,
+      'the two floors get different ratios, so it is measured not assumed: ' + ratios.join(', '));
+
     console.log('\n== the text names ==');
     say(g.labels.present === g.count, 'every light is labelled, got ' + g.labels.present);
     say(g.labels.text.every(t => t.length > 0), 'the labels carry text: ' + g.labels.text.join(' / '));
