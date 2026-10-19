@@ -23,6 +23,9 @@ odd.locations[0].path = 'weird path';
 odd.locations[0].icons = State.ICON_TYPES.map((t, i) =>
   State.makeIcon({ type: t.value, name: t.label + ' ' + (i + 1), entity: 'light.x' + i }));
 odd.locations[0].iconCount = odd.locations[0].icons.length;
+odd.locations[0].icons[0].room = "Bob's Den";
+odd.locations[0].icons[1].room = "Bob's Den";
+odd.locations[0].icons[2].room = 'Attic';
 odd.meta.slug = 'Bad Slug!!';
 cases.push({ name: 'all-types-and-odd-names', state: odd });
 
@@ -195,6 +198,89 @@ say(/\n {8}card_mod:\n {10}style: \|-\n {12}#root \{/.test(fitDash),
 say(/aspect-ratio: 1\.7778/.test(fitDash), 'using the image aspect ratio');
 say(/max-width: calc\(\(100dvh - var\(--header-height, 56px\)/.test(fitDash),
   'and caps its width by the height left under the Home Assistant header');
+
+console.log('\n== the all on / all off scripts are per location ==');
+const pkg = gen(State.defaultState())['lighting_package.yaml'];
+say(!/^lighting_all_on:/m.test(pkg) && !/^lighting_all_off:/m.test(pkg),
+  'there are no global all on / all off scripts');
+say(/^ {2}lighting_floor_1_all_on:$/m.test(pkg) && /^ {2}lighting_floor_2_all_on:$/m.test(pkg),
+  'each location gets its own on script');
+say(/^ {2}lighting_floor_1_all_off:$/m.test(pkg) && /^ {2}lighting_floor_2_all_off:$/m.test(pkg),
+  'and its own off script');
+const floorOne = pkg.split('\n  lighting_floor_1_all_on:')[1].split('\n  lighting_floor_1_all_off:')[0];
+say(!/light\.floor_2_/.test(floorOne), 'a floor script never reaches into another floor');
+say(/perform_action: script\.lighting_floor_1_all_on/.test(layoutDash)
+  && /perform_action: script\.lighting_floor_2_all_on/.test(layoutDash),
+  'the overview wires a button pair to each floor, not one global script');
+
+console.log('\n== a fixture can sit out the all on / all off scripts ==');
+const sitOut = State.defaultState();
+const outEntity = sitOut.locations[0].icons[0].entity;
+sitOut.locations[0].icons[0].inAll = false;
+const sitPkg = gen(sitOut)['lighting_package.yaml'];
+const sitFloorOne = sitPkg.split('\n  lighting_floor_1_all_on:')[1].split('\n  lighting_floor_1_all_off:')[0];
+say(!sitFloorOne.includes("'" + outEntity + "'"), 'the fixture is left out of its floor all on script');
+say(sitPkg.includes(outEntity), 'but it is still in the package (its group lists it)');
+say(dash(gen(sitOut)).includes("entity: '" + outEntity + "'"),
+  'and it is still listed on the overview and placed on the plan');
+const noneInAll = State.defaultState();
+noneInAll.locations = [noneInAll.locations[0]];
+noneInAll.locations[0].icons.forEach(function (icon) { icon.inAll = false; });
+const noneFin = gen(noneInAll)['lighting_package.yaml'];
+say(!/lighting_floor_1_all_on:/.test(noneFin), 'a floor where nothing is in the all on / all off gets no scripts');
+say(!/horizontal-stack/.test(dash(gen(noneInAll))),
+  'and its overview shows no All On / All Off buttons');
+
+console.log('\n== fixtures group into rooms on their floor ==');
+const roomy = State.defaultState();
+roomy.locations[0].icons[0].room = 'Kitchen';
+roomy.locations[0].icons[1].room = 'Kitchen';
+roomy.locations[0].icons[2].room = 'Lounge';
+const roomyPkg = gen(roomy)['lighting_package.yaml'];
+say(/^ {2}lighting_floor_1_kitchen:$/m.test(roomyPkg), 'a room gets its own group');
+say(/^ {4}name: 'Lighting Floor 1 Kitchen'$/m.test(roomyPkg), 'named for its floor and room');
+const kitchenGroup = roomyPkg.split('\n  lighting_floor_1_kitchen:')[1].split('\n  lighting_floor_1_lounge:')[0];
+say(kitchenGroup.includes("'" + roomy.locations[0].icons[0].entity + "'")
+  && kitchenGroup.includes("'" + roomy.locations[0].icons[1].entity + "'"),
+  'and lists just the fixtures that name it');
+say(!kitchenGroup.includes("'" + roomy.locations[0].icons[2].entity + "'"),
+  'a fixture in another room is not listed');
+say(/^ {2}lighting_floor_1_kitchen_all_on:$/m.test(roomyPkg)
+  && /^ {2}lighting_floor_1_kitchen_all_off:$/m.test(roomyPkg),
+  'and it gets its own on / off script pair');
+const kitchenOn = roomyPkg.split('\n  lighting_floor_1_kitchen_all_on:')[1]
+  .split('\n  lighting_floor_1_kitchen_all_off:')[0];
+say(!/floor_1_uplighter_3/.test(kitchenOn), 'a room script never reaches into another room');
+say(!/floor_2_/.test(kitchenOn), 'nor into another floor');
+const roomyDash = dash(gen(roomy));
+say(/title: 'Floor 1 - Kitchen'/.test(roomyDash) && /title: 'Floor 1 - Lounge'/.test(roomyDash),
+  'the overview gets a section per room, titled floor - room');
+say(/perform_action: script\.lighting_floor_1_kitchen_all_on/.test(roomyDash),
+  'and wires its own All On button to the room script');
+say(roomyPkg.indexOf('lighting_floor_1_kitchen_all_on')
+  < roomyPkg.indexOf('lighting_floor_1_lounge_all_on'),
+  'rooms keep the order their fixtures first appear in');
+
+console.log('\n== a room fixture can sit out the all on / all off scripts ==');
+const roomSit = State.defaultState();
+roomSit.locations[0].icons[0].room = 'Kitchen';
+roomSit.locations[0].icons[1].room = 'Kitchen';
+roomSit.locations[0].icons[1].inAll = false;
+const roomSitPkg = gen(roomSit)['lighting_package.yaml'];
+const roomSitOn = roomSitPkg.split('\n  lighting_floor_1_kitchen_all_on:')[1]
+  .split('\n  lighting_floor_1_kitchen_all_off:')[0];
+say(!roomSitOn.includes("'" + roomSit.locations[0].icons[1].entity + "'"),
+  'the fixture is left out of its room all on script');
+say(roomSitPkg.includes("'" + roomSit.locations[0].icons[1].entity + "'"),
+  'but its room group still lists it');
+const roomEmpty = State.defaultState();
+roomEmpty.locations = [roomEmpty.locations[0]];
+roomEmpty.locations[0].icons.forEach(function (icon) { icon.room = 'Loft'; icon.inAll = false; });
+say(!/lighting_floor_1_loft_all_on:/.test(gen(roomEmpty)['lighting_package.yaml']),
+  'a room where nothing is in the all on / all off gets no scripts');
+say(!/Loft/.test(dash(gen(roomEmpty))),
+  'and no overview section');
+say(/Loft/.test(gen(roomEmpty)['lighting_package.yaml']), 'though its group still exists');
 
 console.log('\n== the install notes cover card-mod ==');
 const install = gen(State.defaultState())['INSTALL.txt'];

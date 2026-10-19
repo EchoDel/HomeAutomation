@@ -100,9 +100,7 @@
         sunsetScene: true,
         sunriseOff: true,
         personArrival: false,
-        motion: true,
-        helperSwitches: true,
-        allScripts: true
+        motion: true
       }
     },
     activeLocation: null,
@@ -111,7 +109,7 @@
   };
 
   /* Pick a name that is not already used on this location, so two uplighters
-     never end up sharing an entity id, helper or theme variable. */
+     never end up sharing an entity id or theme variable. */
   function nextIconName(icons, type) {
     var info = typeInfo(type);
     var taken = {};
@@ -137,9 +135,13 @@
       y: typeof opts.y === 'number' ? opts.y : 50,
       size: typeof opts.size === 'number' ? opts.size : 48,
       colour: opts.colour || info.hue,
-      enabled: opts.enabled !== false,
       tracked: opts.tracked !== false,
-      helper: opts.helper !== false,
+      /* Which room on this floor the fixture belongs to (free text). Rooms
+         are just the distinct names, each with its own All On / All Off. */
+      room: opts.room || '',
+      /* Whether this fixture is in its view's All On / All Off scripts. Off
+         leaves it on the plan, to be controlled from its own icon only. */
+      inAll: opts.inAll !== false,
       hidden: !!opts.hidden,
       brightnessEntity: opts.brightnessEntity || '',
       colourTempEntity: opts.colourTempEntity || '',

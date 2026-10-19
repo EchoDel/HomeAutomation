@@ -95,6 +95,71 @@ const { boot, checker, BOX, APP } = require('./_harness.js');
     say(afterType !== beforeType, 'the icon changed with the type: ' + afterType);
   }
 
+  console.log('\n== a fixture can be kept out of the All On / All Off ==');
+  const activeEntity = entities()[0];
+  const allCheck = $$('#inspectorBody label.check').find(l =>
+    l.textContent.includes('In the All On / All Off buttons'));
+  say(!!allCheck, 'the inspector offers the all on / all off switch');
+  const picker = $('#filePicker');
+  const showPackage = async () => {
+    picker.value = 'lighting_package.yaml';
+    picker.dispatchEvent(new win.Event('change', { bubbles: true }));
+    await tick(100);
+  };
+  const pkgText = () => $('#yamlOutput').textContent;
+  const floorOneScript = () =>
+    pkgText().split('\n  lighting_floor_1_all_on:')[1].split('\n  lighting_floor_1_all_off:')[0];
+  await showPackage();
+  say(floorOneScript().includes("'" + activeEntity + "'"),
+    'the fixture starts inside its floor all on script');
+  if (allCheck) {
+    allCheck.querySelector('input').click();
+    await tick(150);
+    await showPackage();
+    say(!floorOneScript().includes("'" + activeEntity + "'"),
+      'ticking it off takes the fixture out of the script');
+    say(pkgText().includes(activeEntity), 'the fixture itself is still in the package');
+    /* Put it back in, so the room tests below start from the default. */
+    const again = $$('#inspectorBody label.check').find(l =>
+      l.textContent.includes('In the All On / All Off buttons'));
+    again.querySelector('input').click();
+    await tick(150);
+  }
+  picker.value = 'dashboard.yaml';
+  picker.dispatchEvent(new win.Event('change', { bubbles: true }));
+  await tick(100);
+
+  console.log('\n== a fixture can be given a room ==');
+  const roomField = $$('#inspectorBody label.field').find(l => {
+    const span = l.querySelector('span');
+    return span && span.textContent.trim() === 'Room';
+  });
+  say(!!roomField, 'the inspector offers a room field');
+  const roomBox = roomField && roomField.querySelector('input');
+  if (roomBox) {
+    roomBox.value = 'Kitchen';
+    roomBox.dispatchEvent(new win.Event('input', { bubbles: true }));
+    await tick(150);
+    await showPackage();
+    say(/^ {2}lighting_floor_1_kitchen:$/m.test(pkgText()), 'typing a room adds a room group');
+    say(/^ {2}lighting_floor_1_kitchen_all_on:$/m.test(pkgText())
+      && /^ {2}lighting_floor_1_kitchen_all_off:$/m.test(pkgText()),
+      'and an all on / all off script pair');
+    say(pkgText().split('\n  lighting_floor_1_kitchen_all_on:')[1]
+      .split('\n  lighting_floor_1_kitchen_all_off:')[0].includes("'" + activeEntity + "'"),
+      'listing the fixture that named it');
+    picker.value = 'dashboard.yaml';
+    picker.dispatchEvent(new win.Event('change', { bubbles: true }));
+    await tick(100);
+    say(/title: 'Floor 1 - Kitchen'/.test(yamlText()),
+      'and the overview gains a room section');
+    /* Clear it again: a room section repeats its floor's entity list, so the
+       later "no duplicate entity ids" checks assume no room is set. */
+    roomBox.value = '';
+    roomBox.dispatchEvent(new win.Event('input', { bubbles: true }));
+    await tick(150);
+  }
+
   console.log('\n== 1-15 all render, and nothing else moves ==');
   const anchor = spots();
   for (let n = 6; n <= 15; n++) { $('#btnIconPlus').click(); await tick(70); }

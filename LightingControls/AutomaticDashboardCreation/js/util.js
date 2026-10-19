@@ -26,7 +26,7 @@
       .replace(/^_+|_+$/g, '')
       .slice(0, 60);
     /* Names written in a non-latin script keep a stable hashed slug so entity
-       ids, helpers and theme variables stay valid and unique. */
+       ids and theme variables stay valid and unique. */
     return slug || ('name_' + hash(raw));
   }
 

@@ -47,6 +47,22 @@ say(S.migrate(JSON.parse(JSON.stringify(measured))).locations[0].imageRatio === 
 say(S.defaultState().locations[0].imageRatio === 0,
   'and a draft that has never measured an image defaults to 0 (no fit block)');
 
+console.log('\n== a fixture can be kept out of the all on / all off ==');
+say(S.defaultState().locations[0].icons[0].inAll === true,
+  'a fixture is in its All On / All Off by default');
+const satOut = S.defaultState();
+satOut.locations[0].icons[0].inAll = false;
+say(S.migrate(JSON.parse(JSON.stringify(satOut))).locations[0].icons[0].inAll === false,
+  'and sitting one out is kept when the draft is reopened');
+
+console.log('\n== a fixture can be put in a room ==');
+say(S.defaultState().locations[0].icons[0].room === '',
+  'a fixture starts with no room');
+const roomed = S.defaultState();
+roomed.locations[0].icons[0].room = "Bob's Study";
+say(S.migrate(JSON.parse(JSON.stringify(roomed))).locations[0].icons[0].room === "Bob's Study",
+  'and the room name is kept when the draft is reopened');
+
 console.log('\n== opting in still works ==');
 const opted = S.defaultState();
 opted.tuya.mode = 'local';

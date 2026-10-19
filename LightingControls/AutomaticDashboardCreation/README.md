@@ -64,7 +64,9 @@ The dashboard is stock Lovelace: a **panel view** per location, which gives its 
 `picture-elements` card the whole screen - the floor plan as an image with one
 `state-icon` per light (tap toggles, hold opens the detail dialog). Icon positions are
 percentages, so the same view works on a phone and on a wall panel. The "All Lights"
-overview is a `sections` view of buttons and entity lists.
+overview is a `sections` view that groups each location's own All On / All Off buttons
+with its entity list, followed by a section per **room**, so no control reaches across
+floors or rooms.
 
 Because a panel view hands the card the full width, a wide floor plan would otherwise
 grow taller than the browser and need a scroll. The builder measures each floor plan's
@@ -78,11 +80,20 @@ the same shape as the image. Each floor keeps its own ratio (a 738x928 plan and 
 535x844 plan letterbox differently). This block needs card-mod (see [Installing](#installing));
 without it the plan still renders, it just may scroll on a very wide screen.
 
-The package adds an `input_boolean` enable helper per fixture (turn one off and the
-all-on / all-off scripts skip it), a group per location
-(`group.lighting_floor_1`, written in the id-keyed form Home Assistant's `group`
-integration expects), and the scripts and automations you ticked - sunset, sunrise,
-motion and welcome-home.
+The package writes a group per location
+(`group.lighting_floor_1`, in the id-keyed form Home Assistant's `group` integration
+expects), one All On / All Off script pair per location, and the automations you ticked -
+sunset, sunrise, motion and welcome-home. The scripts never cross locations: each floor's
+pair turns on and off only that floor's fixtures. On each fixture you can untick **In the
+All On / All Off buttons** to leave it out of its floor's scripts while it stays on the
+plan, controlled from its own icon.
+
+Give a fixture a **Room** and it joins that room *on the same floor*. Every distinct room
+name on a floor gets its own group, its own All On / All Off script pair
+(`script.lighting_floor_1_kitchen_all_on`) and its own section on the overview, listed
+right after its floor and titled `Floor 1 - Kitchen`. Rooms never reach across floors, and
+a fixture with **In the All On / All Off buttons** off is left out of its room's scripts
+too. Leave the Room box empty for a fixture that belongs to no room.
 
 When you pick a Tuya mode, the `tuya` and `tuya_local` blocks are generated at the top
 of the package with a comment saying so, because packages cannot own them: move them
@@ -151,7 +162,7 @@ Assistant only loads packages and themes from `configuration.yaml`:
 
 | Extra | How it gets loaded |
 | --- | --- |
-| All On / All Off buttons, automations, enable helpers (`lighting_package.yaml`) | `homeassistant: packages:` (see [What comes out](#what-comes-out)) |
+| All On / All Off buttons, automations, groups (`lighting_package.yaml`) | `homeassistant: packages:` (see [What comes out](#what-comes-out)) |
 | Per-light colours (`lighting_theme.yaml`) | `frontend: themes:`, or skip it and delete the `theme:` lines from the views |
 | Icon accent colours + off-dim (`card_mod:`) | the [card-mod](#card-mod-the-icon-colours) module, or delete the `card_mod:` blocks |
 | Floor plan images | copy to `/config/www/lighting/` (works the same whichever route you use) |
@@ -278,7 +289,7 @@ showing a blank box.
 ```
 cd tests
 npm install
-npm test               # 199 checks, plus 14 server tests and every generated yaml parsed
+npm test               # 237 checks, plus 14 server tests and every generated yaml parsed
 npm run test:browser   # 36 checks in real Firefox, needs the server running
 npm run test:e2e       # 8 checks, real Firefox -> server -> fake Home Assistant
 ```
@@ -287,8 +298,11 @@ npm run test:e2e       # 8 checks, real Firefox -> server -> fake Home Assistant
 moves one already on the plan, and nothing overlaps), the artwork and text names,
 the entity pickers (including a run with no Home Assistant connected), and the
 generated YAML: every icon count from 1 to 15, odd names, untracked and
-duplicate fixtures, that an entity id decides how the fixture is controlled, and
-that Tuya data never reaches `dashboard.yaml`. It also pins the layout to what a
+duplicate fixtures, that an entity id decides how the fixture is controlled, that
+the All On / All Off scripts stay within their own location and that a fixture can
+be left out of them, that fixtures group into rooms on their floor with their own
+groups, scripts and overview sections (also staying out of the all on / all off when
+asked), and that Tuya data never reaches `dashboard.yaml`. It also pins the layout to what a
 `sections` view will actually render: cards live under a `sections:` grid, never
 as a top-level `cards:` key that Home Assistant ignores at runtime. The YAML it writes goes to
 `tests/yaml-out/`, which `check-yaml.py` then parses with PyYAML

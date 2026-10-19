@@ -45,6 +45,30 @@
     return input;
   }
 
+  /* A room name box that suggests the rooms already used on this floor, so
+     typing an existing name groups the fixture into it. */
+  function roomInput(value, names, onInput) {
+    var listId = U.uid('rooms');
+    var datalist = el('datalist');
+    datalist.id = listId;
+    names.forEach(function (name) {
+      var option = el('option');
+      option.value = name;
+      datalist.appendChild(option);
+    });
+    var input = el('input');
+    input.type = 'text';
+    input.value = value == null ? '' : value;
+    input.placeholder = 'e.g. Kitchen';
+    input.setAttribute('list', listId);
+    input.setAttribute('autocomplete', 'off');
+    input.addEventListener('input', function () { onInput(input.value); });
+    var wrap = el('div', 'room-field');
+    wrap.appendChild(input);
+    wrap.appendChild(datalist);
+    return wrap;
+  }
+
   /* Same label/control layout as field(), but a div: pickers hold buttons of
      their own and a <label> wrapper would swallow those clicks. */
   function fieldDiv(label, control) {
@@ -342,6 +366,19 @@
       }))
     ]));
 
+    var roomNames = [];
+    loc.icons.forEach(function (other) {
+      var name = (other.room || '').trim();
+      if (name && roomNames.indexOf(name) === -1) roomNames.push(name);
+    });
+    roomNames.sort();
+    sec.appendChild(row([
+      field('Room', roomInput(icon.room, roomNames, function (v) {
+        icon.room = v.trim();
+        soft(function () { ctx.onEdit('room'); });
+      }))
+    ]));
+
     sec.appendChild(row([
       field('X position %', numberInput(U.round(icon.x, 2), function (v) { icon.x = U.clamp(v, 0, 100); ctx.onEdit('pos', true); }, { min: 0, max: 100, step: 0.5 })),
       field('Y position %', numberInput(U.round(icon.y, 2), function (v) { icon.y = U.clamp(v, 0, 100); ctx.onEdit('pos', true); }, { min: 0, max: 100, step: 0.5 }))
@@ -358,7 +395,7 @@
     ], 'insp-row'));
 
     sec.appendChild(checkbox('Include in generated YAML (exclude to disable the fixture)', icon.tracked, function (v) { icon.tracked = v; ctx.onEdit('tracked', true); }));
-    sec.appendChild(checkbox('Add an on/off enable helper', icon.helper, function (v) { icon.helper = v; ctx.onEdit('helper', true); }));
+    sec.appendChild(checkbox('In the All On / All Off buttons', icon.inAll, function (v) { icon.inAll = v; ctx.onEdit('inAll', true); }));
     sec.appendChild(checkbox('Show on the floor plan', !icon.hidden, function (v) { icon.hidden = !v; ctx.onEdit('hidden', true); }));
     return sec;
   }
@@ -525,8 +562,6 @@
     }
 
     var autos = section('Generated automations');
-    autos.appendChild(checkbox('Global "all lights on / off" scripts', t.autos.allScripts, function (v) { t.autos.allScripts = v; ctx.onEdit('autos', true); }));
-    autos.appendChild(checkbox('Per-location on/off scripts', t.autos.helperSwitches, function (v) { t.autos.helperSwitches = v; ctx.onEdit('autos', true); }));
     autos.appendChild(checkbox('Evening scene at sunset', t.autos.sunsetScene, function (v) { t.autos.sunsetScene = v; ctx.onEdit('autos', true); }));
     autos.appendChild(checkbox('All off after sunrise', t.autos.sunriseOff, function (v) { t.autos.sunriseOff = v; ctx.onEdit('autos', true); }));
     autos.appendChild(checkbox('Welcome-home automation', t.autos.personArrival, function (v) { t.autos.personArrival = v; ctx.onEdit('autos', true); }));

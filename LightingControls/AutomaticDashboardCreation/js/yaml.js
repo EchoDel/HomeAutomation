@@ -1,7 +1,7 @@
 /* YAML generation.
    Produces a set of files that drop straight into a Home Assistant config:
      dashboard.yaml        - one view per location, floor plan + placed icons
-     lighting_package.yaml - Tuya config, helpers, groups, scripts, automations
+     lighting_package.yaml - Tuya config, groups, per-location scripts, automations
      lighting_theme.yaml   - per-fixture accent colours used by the dashboard
      lighting_secrets.yaml - Tuya keys, referenced with !secret
      INSTALL.txt           - step by step install notes
@@ -32,13 +32,6 @@
   Lines.prototype.comment = function (indent, text) {
     var body = String(text == null ? '' : text).replace(/^#+\s*/, '');
     return this.add(indent, body ? '# ' + body : '#');
-  };
-  /* Folded block scalar: joins to a single line, strips surrounding space.
-     `key` is written on the same line as the >- indicator, as YAML needs. */
-  Lines.prototype.folded = function (indent, text, key) {
-    this.add(indent, (key ? key + ': ' : '') + '>-');
-    this.add(indent + 2, String(text).replace(/\s+/g, ' ').trim());
-    return this;
   };
   Lines.prototype.toString = function () {
     return this.out.join('\n').replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '') + '\n';
@@ -109,7 +102,6 @@
         .filter(function (icon) { return icon.tracked && icon.entity; })
         .map(function (icon) {
           var iconSlug = U.slugify(icon.name);
-          var helper = 'lighting_' + unique(locSlug + '_' + iconSlug + '_enabled');
           var secret = 'tuya_local_key_' + unique(locSlug + '_' + iconSlug);
           return {
             icon: icon,
@@ -118,23 +110,44 @@
                however the fixture was typed, and Matter / Thread devices name
                their domain right there in the id. */
             domain: LightingState.domainOf(icon.entity) || icon.domain || 'light',
-            helper: helper,
-            helperId: 'input_boolean.' + helper,
             colourVar: unique(locSlug + '-' + iconSlug + '-color'),
             secret: secret
           };
         });
+      var onOffIcons = icons.filter(function (e) { return e.icon.inAll !== false; });
+      /* Rooms are just the distinct room names on this floor, in the order the
+         fixture first uses them. Each gets its own scripts and overview card. */
+      var roomMap = {};
+      var roomOrder = [];
+      icons.forEach(function (entry) {
+        var name = (entry.icon.room || '').trim();
+        if (!name) return;
+        if (!roomMap[name]) {
+          roomMap[name] = { name: name, icons: [], onOffIcons: [] };
+          roomOrder.push(name);
+        }
+        roomMap[name].icons.push(entry);
+        if (entry.icon.inAll !== false) roomMap[name].onOffIcons.push(entry);
+      });
+      var rooms = roomOrder.map(function (name) {
+        var room = roomMap[name];
+        room.scriptPrefix = 'lighting_' + unique(locSlug + '_' + U.slugify(name));
+        return room;
+      });
       return {
         loc: loc,
         slug: locSlug,
         viewPath: loc.path || locSlug,
         viewTitle: loc.title || loc.name,
         icons: icons,
+        /* Fixtures this view's All On / All Off scripts may touch. Ones with
+           "In the All On / All Off buttons" off stay on the plan but are left
+           out here, so they are only ever switched from their own icon. */
+        onOffIcons: onOffIcons,
+        rooms: rooms,
         groupName: 'Lighting ' + (loc.title || loc.name),
         scriptPrefix: 'lighting_' + unique(locSlug),
-        allLights: icons.length > 0 && icons.every(function (e) { return e.domain === 'light'; }),
-        entities: icons.map(function (e) { return e.entity; }),
-        lightEntities: icons.filter(function (e) { return e.domain === 'light'; }).map(function (e) { return e.entity; })
+        entities: icons.map(function (e) { return e.entity; })
       };
     });
 
@@ -142,33 +155,13 @@
       slug: U.slugify(state.meta.slug || state.meta.title || 'lighting'),
       theme: state.meta.theme || 'Lighting',
       locations: locations,
-      all: locations.reduce(function (acc, item) { return acc.concat(item.icons); }, []),
-      allLightEntities: locations.reduce(function (acc, item) { return acc.concat(item.lightEntities); }, []),
-      allEntities: locations.reduce(function (acc, item) { return acc.concat(item.entities); }, [])
+      all: locations.reduce(function (acc, item) { return acc.concat(item.icons); }, [])
     };
   }
 
   /* --------------------------------------------------------- HA templates  */
 
-  /* Jinja expression resolving to a comma separated list of the fixtures whose
-     enable helper is on. Used as a script variable so the scripts respect the
-     input_boolean toggles. */
-  function enabledEntities(entries) {
-    var pairs = entries.map(function (entry) {
-      return '(' + q(entry.entity) + ', ' + (entry.icon.helper ? q(entry.helperId) : "''") + ')';
-    }).join(', ');
-    return [
-      '{%- set ns = namespace(items=[]) -%}',
-      '{%- for entity, guard in [' + pairs + '] -%}',
-      '{%- if not guard or is_state(guard, \'on\') -%}',
-      '{%- set ns.items = ns.items + [entity] -%}',
-      '{%- endif -%}',
-      '{%- endfor -%}',
-      "{{ ns.items | join(',') }}"
-    ].join('');
-  }
-
-  /* Body of a turn-on / turn-off sequence that respects the helpers.
+  /* Body of a turn-on / turn-off sequence for a fixed set of fixtures.
      opts: { on: true|false, brightness: '<template expression or null>' } */
   function controlSequence(entries, indent, opts) {
     opts = opts || {};
@@ -176,25 +169,15 @@
     var brightness = on ? (opts.brightness || null) : null;
     var allLight = entries.length > 0 && entries.every(function (e) { return e.domain === 'light'; });
     var l = new Lines();
-    var varName = 'targets';
 
-    l.add(indent, '- variables:');
-    l.folded(indent + 4, enabledEntities(entries), varName);
-
-    l.add(indent, '- if:');
-    l.add(indent + 2, '- condition: template');
-    l.add(indent + 4, "value_template: \"{{ " + varName + " | trim | length > 0 }}\"");
-    l.add(indent + 2, 'then:');
-    l.add(indent + 4, '- action: ' + (on ? (allLight ? 'light.turn_on' : 'homeassistant.turn_on')
-                                          : 'homeassistant.turn_off'));
-    l.add(indent + 6, 'target:');
-    l.add(indent + 8, "entity_id: \"{{ " + varName + ' }}"');
+    l.add(indent, '- action: ' + (on ? (allLight ? 'light.turn_on' : 'homeassistant.turn_on')
+                                     : 'homeassistant.turn_off'));
+    l.add(indent + 2, 'target:');
+    l.add(indent + 4, 'entity_id: ' + inlineList(entries.map(function (e) { return e.entity; })));
     if (allLight && brightness) {
-      l.add(indent + 6, 'data:');
-      l.add(indent + 8, "brightness_pct: \"{{ " + brightness + ' }}"');
+      l.add(indent + 2, 'data:');
+      l.add(indent + 4, "brightness_pct: \"{{ " + brightness + ' }}"');
     }
-    l.add(indent + 2, 'else:');
-    l.add(indent + 4, '- stop: No enabled lights, nothing to turn ' + (on ? 'on' : 'off'));
     return l;
   }
 
@@ -333,42 +316,62 @@
       l.add(4, 'max_columns: 4');
       /* A sections view only renders cards that live under a `sections:` grid.
          A top-level `cards:` key is ignored at runtime - the frontend shows it
-         purely as an editor-only "imported cards" list with an eye-off icon. */
+         purely as an editor-only "imported cards" list with an eye-off icon.
+         Each location is its own section, followed by a section per room, so
+         each All On / All Off stays grouped with its list and no control
+         reaches across a floor or a room. */
       l.add(4, 'sections:');
-      l.add(6, '- type: grid');
-      l.add(8, 'cards:');
-      l.add(10, '- type: horizontal-stack');
-      l.add(12, 'cards:');
-      l.add(14, '- type: button');
-      l.add(16, 'name: All On');
-      l.add(16, 'icon: mdi:lightbulb-on');
-      l.add(16, 'show_name: true');
-      l.add(16, 'color: amber');
-      l.add(16, 'tap_action:');
-      l.add(18, 'action: perform-action');
-      l.add(18, 'perform_action: script.lighting_all_on');
-      l.add(14, '- type: button');
-      l.add(16, 'name: All Off');
-      l.add(16, 'icon: mdi:lightbulb-off');
-      l.add(16, 'show_name: true');
-      l.add(16, 'tap_action:');
-      l.add(18, 'action: perform-action');
-      l.add(18, 'perform_action: script.lighting_all_off');
+      var listed = p.locations.filter(function (item) { return item.icons.length; });
 
-      p.locations.forEach(function (item) {
-        if (!item.icons.length) return;
-        l.blank();
+      /* One card stack: optional All On / All Off buttons over an entity list.
+         Used for a floor and, below it, for each of its rooms. */
+      function emitSection(title, listIcons, onOffIcons, scriptPrefix) {
+        l.add(6, '- type: grid');
+        l.add(8, 'cards:');
+        if (onOffIcons.length && scriptPrefix) {
+          l.add(10, '- type: horizontal-stack');
+          l.add(12, 'cards:');
+          l.add(14, '- type: button');
+          l.add(16, 'name: All On');
+          l.add(16, 'icon: mdi:lightbulb-on');
+          l.add(16, 'show_name: true');
+          l.add(16, 'color: amber');
+          l.add(16, 'tap_action:');
+          l.add(18, 'action: perform-action');
+          l.add(18, 'perform_action: script.' + scriptPrefix + '_all_on');
+          l.add(14, '- type: button');
+          l.add(16, 'name: All Off');
+          l.add(16, 'icon: mdi:lightbulb-off');
+          l.add(16, 'show_name: true');
+          l.add(16, 'tap_action:');
+          l.add(18, 'action: perform-action');
+          l.add(18, 'perform_action: script.' + scriptPrefix + '_all_off');
+        }
         l.add(10, '- type: entities');
-        l.add(12, 'title: ' + q(item.viewTitle));
+        l.add(12, 'title: ' + q(title));
         l.add(12, 'show_header_toggle: false');
         l.add(12, 'entities:');
-        item.icons.forEach(function (entry) {
+        listIcons.forEach(function (entry) {
           l.add(14, '- entity: ' + q(entry.entity));
           l.add(16, 'name: ' + q(entry.icon.name));
           l.add(16, 'icon: ' + q(LightingState.typeInfo(entry.icon.type).icon));
           if (entry.domain === 'light') l.add(16, 'secondary_info: last-changed');
         });
+      }
+
+      listed.forEach(function (item) {
+        emitSection(item.viewTitle, item.icons, item.onOffIcons, item.scriptPrefix);
+        item.rooms.forEach(function (room) {
+          if (!room.onOffIcons.length) return;
+          emitSection(item.viewTitle + ' - ' + room.name, room.icons, room.onOffIcons, room.scriptPrefix);
+        });
       });
+      if (!listed.length) {
+        l.add(6, '- type: grid');
+        l.add(8, 'cards:');
+        l.add(10, '- type: markdown');
+        l.add(12, 'content: ' + q('No fixtures yet - add some in the builder.'));
+      }
     }
 
     p.locations.forEach(function (item) {
@@ -464,33 +467,10 @@
     return l;
   }
 
-  function helpersBlock(state, p) {
-    var l = new Lines();
-    l.blank();
-    l.comment(0, '# ---- 2. Enable helpers ----------------------------------------------');
-    l.comment(0, '# Switch one off here to take that fixture out of the all on / all off');
-    l.comment(0, '# scripts without removing it from the dashboard.');
-    var withHelper = p.all.filter(function (entry) { return entry.icon.helper; });
-    if (!withHelper.length) {
-      l.comment(0, '# (no helpers requested)');
-      return l;
-    }
-    l.add(0, 'input_boolean:');
-    p.locations.forEach(function (item) {
-      item.icons.forEach(function (entry) {
-        if (!entry.icon.helper) return;
-        l.add(2, entry.helper + ':');
-        l.add(4, 'name: ' + q(U.titleCase(item.viewTitle) + ' ' + entry.icon.name + ' enabled'));
-        l.add(4, 'initial: true');
-      });
-    });
-    return l;
-  }
-
   function groupsBlock(state, p) {
     var l = new Lines();
     l.blank();
-    l.comment(0, '# ---- 3. Groups, one per location (any entity domain) ----------------');
+    l.comment(0, '# ---- 2. Groups, one per location and one per room -------------------');
     var groups = p.locations.filter(function (item) { return item.entities.length; });
     if (!groups.length) {
       l.comment(0, '# (no fixtures yet)');
@@ -501,64 +481,62 @@
       l.add(2, item.scriptPrefix + ':');
       l.add(4, 'name: ' + q(item.groupName));
       l.add(4, 'entities: ' + inlineList(item.entities));
+      item.rooms.forEach(function (room) {
+        l.add(2, room.scriptPrefix + ':');
+        l.add(4, 'name: ' + q('Lighting ' + item.viewTitle + ' ' + room.name));
+        l.add(4, 'entities: ' + inlineList(room.icons.map(function (e) { return e.entity; })));
+      });
     });
     return l;
   }
 
   function scriptsBlock(state, p) {
-    var autos = state.tuya.autos;
     var l = new Lines();
     l.blank();
-    l.comment(0, '# ---- 4. Scripts, bound to the dashboard buttons ----------------------');
-    l.comment(0, '# Each script only touches fixtures whose enable helper is on.');
+    l.comment(0, '# ---- 3. Scripts, an All On / All Off pair per location and room -----');
+    l.comment(0, '# Each floor and each room owns its scripts, so neither reaches across.');
+    l.comment(0, '# Fixtures with "In the All On / All Off buttons" off are left out.');
 
-    if (!p.all.length) {
-      l.comment(0, '# (no fixtures yet)');
+    var floors = p.locations.filter(function (item) { return item.onOffIcons.length; });
+    if (!floors.length) {
+      l.comment(0, '# (no fixtures are set to be in an All On / All Off yet)');
       return l;
     }
-    l.add(0, 'script:');
 
-    l.blank();
-    l.add(2, 'lighting_all_on:');
-    l.add(4, 'alias: ' + q('Lighting: all on'));
-    l.add(4, 'fields:');
-    l.add(6, 'brightness:');
-    l.add(8, 'name: Brightness');
-    l.add(8, 'required: false');
-    l.add(8, 'default: 100');
-    l.add(8, 'selector:');
-    l.add(10, 'number:');
-    l.add(12, 'min: 1');
-    l.add(12, 'max: 100');
-    l.add(12, 'unit_of_measurement: "%"');
-    l.add(4, 'sequence:');
-    controlSequence(p.all, 6, { on: true, brightness: 'brightness | int(100)' })
-      .out.forEach(function (line) { l.out.push(line); });
+    function pair(prefix, label, onOffIcons) {
+      l.blank();
+      l.add(2, prefix + '_all_on:');
+      l.add(4, 'alias: ' + q('Lighting: ' + label + ' all on'));
+      l.add(4, 'fields:');
+      l.add(6, 'brightness:');
+      l.add(8, 'name: Brightness');
+      l.add(8, 'required: false');
+      l.add(8, 'default: 100');
+      l.add(8, 'selector:');
+      l.add(10, 'number:');
+      l.add(12, 'min: 1');
+      l.add(12, 'max: 100');
+      l.add(12, 'unit_of_measurement: "%"');
+      l.add(4, 'sequence:');
+      controlSequence(onOffIcons, 6, { on: true, brightness: 'brightness | int(100)' })
+        .out.forEach(function (line) { l.out.push(line); });
 
-    l.blank();
-    l.add(2, 'lighting_all_off:');
-    l.add(4, 'alias: ' + q('Lighting: all off'));
-    l.add(4, 'sequence:');
-    controlSequence(p.all, 6, { on: false })
-      .out.forEach(function (line) { l.out.push(line); });
-
-    if (autos.helperSwitches) {
-      p.locations.forEach(function (item) {
-        if (!item.icons.length) return;
-        l.blank();
-        l.add(2, item.scriptPrefix + '_all_on:');
-        l.add(4, 'alias: ' + q('Lighting: ' + item.viewTitle + ' all on'));
-        l.add(4, 'sequence:');
-        controlSequence(item.icons, 6, { on: true })
-          .out.forEach(function (line) { l.out.push(line); });
-        l.blank();
-        l.add(2, item.scriptPrefix + '_all_off:');
-        l.add(4, 'alias: ' + q('Lighting: ' + item.viewTitle + ' all off'));
-        l.add(4, 'sequence:');
-        controlSequence(item.icons, 6, { on: false })
-          .out.forEach(function (line) { l.out.push(line); });
-      });
+      l.blank();
+      l.add(2, prefix + '_all_off:');
+      l.add(4, 'alias: ' + q('Lighting: ' + label + ' all off'));
+      l.add(4, 'sequence:');
+      controlSequence(onOffIcons, 6, { on: false })
+        .out.forEach(function (line) { l.out.push(line); });
     }
+
+    l.add(0, 'script:');
+    floors.forEach(function (item) {
+      pair(item.scriptPrefix, item.viewTitle, item.onOffIcons);
+      item.rooms.forEach(function (room) {
+        if (!room.onOffIcons.length) return;
+        pair(room.scriptPrefix, item.viewTitle + ' ' + room.name, room.onOffIcons);
+      });
+    });
     return l;
   }
 
@@ -635,7 +613,7 @@
     var list = automationList(state, p);
     var l = new Lines();
     l.blank();
-    l.comment(0, '# ---- 5. Automations ----------------------------------------------------');
+    l.comment(0, '# ---- 4. Automations ----------------------------------------------------');
     if (!list.length) {
       l.comment(0, '# (no automations selected in the builder)');
       return l;
@@ -678,7 +656,7 @@
 
   function buildPackage(state, p) {
     var l = headerBlock('LIGHTING PACKAGE',
-      ['Helpers, groups, scripts and automations behind the generated dashboard.']);
+      ['Groups, per-location scripts and automations behind the generated dashboard.']);
     l.blank();
     l.comment(0, '# INSTRUCTIONS');
     l.comment(0, '#  1. Copy this file to /config/packages/lighting.yaml');
@@ -698,7 +676,6 @@
       l.blank();
       tuyaLocalBlock(state, p).out.forEach(function (line) { l.out.push(line); });
     }
-    helpersBlock(state, p).out.forEach(function (line) { l.out.push(line); });
     groupsBlock(state, p).out.forEach(function (line) { l.out.push(line); });
     scriptsBlock(state, p).out.forEach(function (line) { l.out.push(line); });
     automationsBlock(state, p).out.forEach(function (line) { l.out.push(line); });
@@ -895,7 +872,9 @@
     out.push('   Developer tools -> YAML -> Check configuration, then restart Home Assistant.');
     out.push('');
     out.push('8. POINTERS FOR LATER');
-    out.push('   * Enable helpers take a fixture out of the all on / all off scripts.');
+    out.push('   * Each location has its own All On / All Off; they never cross locations.');
+    out.push('   * A fixture with "In the All On / All Off buttons" off is left out of');
+    out.push('     those scripts but still works from its own icon on the plan.');
     out.push('   * Move an icon by editing its state-icon style block (left / top are %).');
     out.push('   * Positions are percentages, so one view works on a wall panel too.');
     out.push('   * Re-open the draft in this builder rather than hand editing the YAML.');
@@ -948,7 +927,7 @@
     var issues = [];
     var seenPath = {};
     var entityUse = LightingState.entityIndex(state);
-    var wantsScripts = state.options.masterView || state.tuya.autos.helperSwitches;
+    var wantsScripts = state.options.masterView;
 
     if (!state.locations.length) {
       issues.push({ level: 'error', text: 'No locations defined.' });
@@ -1068,7 +1047,7 @@
     if (state.options.wallpanel) dashboard += buildWallpanel(state, p);
     files.push({ name: 'dashboard.yaml', content: dashboard, note: 'Lovelace views, one per location' });
     if (state.options.genPackage) {
-      files.push({ name: 'lighting_package.yaml', content: buildPackage(state, p), note: 'Tuya blocks, helpers, groups, scripts, automations' });
+      files.push({ name: 'lighting_package.yaml', content: buildPackage(state, p), note: 'Tuya blocks, groups, per-location scripts, automations' });
     }
     if (state.options.genTheme) {
       files.push({ name: 'lighting_theme.yaml', content: buildTheme(state, p), note: 'Per fixture accent colours' });
