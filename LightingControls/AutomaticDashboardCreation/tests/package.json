@@ -1,0 +1,13 @@
+{
+  "name": "lighting-dashboard-tests",
+  "private": true,
+  "description": "Tests for the lighting dashboard builder. The app itself has no dependencies; jsdom is only needed to drive it here.",
+  "scripts": {
+    "test": "node test-app.js && node test-place.js && node test-yaml.js && node test-defaults.js && node test-ha.js && python3 check-yaml.py && python3 -m unittest test_server",
+    "test:browser": "node test-browser.js",
+    "test:e2e": "node e2e-check.js"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0"
+  }
+}
